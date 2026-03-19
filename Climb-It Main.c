@@ -67,21 +67,45 @@ void init_leds()     {}
 
 /* ========== Input Sensors ========== */
 
-int read_grip_strength()  { return 0; }
+int read_grip_strength()  { 
+    
+    return 0; 
+}
 
-int read_grip_action()    { return 0; }
+int read_grip_action()    { 
+    
+    return 0; 
+}
 
-int read_brush_proximity(){ return 0; }
+int read_brush_proximity() { 
+    
+    return 0; 
+}
 
-int read_brush_hall()     { return 0; }
+int read_brush_hall()     { 
 
-int read_vibration()      { return 0; }
+    return 0; 
+}
 
-int read_brush_action()   { return 0; }
+int read_vibration()      { 
 
-int read_mic_level()      { return 0; }
+    return 0; 
+}
 
-int read_mic_action()     { return 0; }
+int read_brush_action()   { 
+    
+    return 0; 
+}
+
+int read_mic_level()      { 
+    
+    return 0; 
+}
+
+int read_mic_action()     { 
+    
+    return 0; 
+}
 
 
 /* ========== Output Actions ========== */
@@ -94,19 +118,34 @@ void play_lose_audio()     {}
 
 void play_win_audio()      {}
 
-void set_led_color(int success) {}
+void set_led_color(int success) {
+
+    if (success) {
+
+        //digitalWrite(PIN_LED_GREEN, HIGH);
+        //digitalWrite(PIN_LED_RED, LOW);
+    } 
+    else {
+
+        //digitalWrite(PIN_LED_GREEN, LOW);
+        //digitalWrite(PIN_LED_RED, HIGH);
+    }
+}
 
 
 /* ========== Logic ========== */
 
 Command pick_next_command() {               /* Randomly select the next command */
 
-    return CMD_NONE;
+    int cmd = rand() % 3;   /* Random number between 0 and 2 */
+
+    return (Command) cmd;
 }
 
 int check_command_success(Command player_action) {
 
-    return (player_action == current_command);
+    int success = (player_action == current_command);
+    return success;
 }
 
 void set_difficulty() { 
@@ -128,9 +167,16 @@ void reset_game() {     /* Reset all game state variables */
     game_active     = 0;
 }
 
-void start_game() {}
+void start_game() {
 
-void end_game()   {}
+    game_active = 1;
+}
+
+void end_game()   {
+
+    play_lose_audio();
+    game_active = 0;
+}
 
 
 /* ========== Main Game Loop ========== */
