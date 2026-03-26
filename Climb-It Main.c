@@ -2,6 +2,7 @@
  * Climb-It Game
  * Team Lambda, 2026
  * Oliver Kettleson-Belinkie
+ *Connor Kariotis
  * 
  * Display funtions not implimented yet
  * Brush is using light sensor and vibration sensor
