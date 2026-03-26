@@ -4,6 +4,7 @@
  * Oliver Kettleson-Belinkie
  * Connor Kariotis
  * Julen Coca Knorr
+ * James Struyk
  * 
  * Display funtions not implimented yet
  * Brush is using light sensor and vibration sensor
