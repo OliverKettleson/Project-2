@@ -3,6 +3,7 @@
  * Team Lambda, 2026
  * Oliver Kettleson-Belinkie
  * Connor Kariotis
+ * Julen Coca Knorr
  * 
  * Display funtions not implimented yet
  * Brush is using light sensor and vibration sensor
