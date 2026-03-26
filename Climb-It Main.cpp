@@ -11,14 +11,7 @@
 
 /* ---------- Includes ---------- */
 
-//#include <Arduino.h>
-#include <stdlib.h>     /* rand() */
-#include <string.h>
-
-
-/* ---------- Debug ---------- */
-
-#define DEBUG 1
+#include <Arduino.h>
 
 
 /* ---------- Pin Definitions ---------- */
@@ -48,7 +41,7 @@
 
 #define BUTTON_DEBOUNCE_MS    50
 #define POST_COMMAND_DELAY_MS 400
-
+#define MAX_SCORE             99
 
 /* ---------- Command Enum ---------- */
 
@@ -68,16 +61,42 @@ static Command      current_command = CMD_NONE;
 static int          time_limit_ms   = 3000;   /* milliseconds */
 static int          game_active     = 0;
 
-static unsigned long command_start_ms = 0;
-static unsigned long led_until_ms     = 0;
-static int           led_showing      = 0;      /* 0 = off, 1 = green, -1 = red */
+/* ---------- Helper Prototypes ---------- */
+void init_system();
+void init_display();
+void init_sensors();
+void init_audio();
+void init_leds();
 
+int read_grip_strength();
+int read_grip_action();
+int read_brush_proximity();
+int read_vibration();
+int read_brush_action();
+int read_mic_level();
+int read_mic_action();
+
+void update_display();
+void play_command_audio();
+void play_lose_audio();
+void play_win_audio();
+void set_led_color(int success);
+void clear_leds();
+
+Command pick_next_command();
+int check_command_success(Command player_action);
+void set_difficulty();
+Command detect_player_action();
+
+int has_player_won();
+
+void start_game();
+void end_game();
+void game_loop();
 
 /* ========== Initialization ========== */
 
 void init_system()   {
-
-    Serial.begin(115200);
 
     init_sensors();
     init_audio();
@@ -85,8 +104,6 @@ void init_system()   {
     init_display();
 
     randomSeed(analogRead(A5));   /* simple seed for randomness */
-
-    Serial.println("System initialized.");
 }
 
 void init_display()  {}
@@ -101,11 +118,12 @@ void init_sensors()  {
     pinMode(PIN_VIBRATION, INPUT);
 
     pinMode(PIN_START_STOP, INPUT_PULLUP);  /* button pressed = LOW */
-
-    Serial.println("Sensors initialized.");
 }
 
-void init_audio()    {}
+void init_audio()    {
+
+    //To be filled in once mic test is complete
+}
 
 void init_leds()     {
 
@@ -114,8 +132,6 @@ void init_leds()     {
 
     digitalWrite(PIN_LED_GREEN, LOW);
     digitalWrite(PIN_LED_RED, LOW);
-
-    Serial.println("LEDs initialized.");
 }
 
 
@@ -186,9 +202,31 @@ int read_mic_action()     {
 
 /* ========== Output Actions ========== */
 
-void update_display()      {}
+void update_display()      {
 
-void play_command_audio()  {}
+    //Display handeled in seperate file
+}
+
+void play_command_audio()  {
+
+    switch (current_command) {
+
+        case CMD_GRIP:
+            // play grip cue
+            break;
+
+        case CMD_BRUSH:
+            // play brush cue
+            break;
+
+        case CMD_SHOUT:
+            // play shout cue
+            break;
+
+        default:
+            break;
+    }
+}
 
 void play_lose_audio()     {}
 
@@ -208,23 +246,18 @@ void set_led_color(int success) {
     }
 }
 
+void clear_leds() {
+
+    digitalWrite(PIN_LED_GREEN, LOW);
+    digitalWrite(PIN_LED_RED, LOW);
+}
+
 
 /* ========== Logic ========== */
 
-const char* command_to_string(Command cmd) {
-
-    switch (cmd) {
-
-        case CMD_GRIP:  return "GRIP";
-        case CMD_BRUSH: return "BRUSH";
-        case CMD_SHOUT: return "SHOUT";
-        default:        return "NONE";
-    }
-}
-
 Command pick_next_command() {               /* Randomly select the next command */
 
-    int cmd = rand() % 3;   /* Random number between 0 and 2 */
+    int cmd = random(0, 3);   /* Random number between 0 and 2 */
 
     return (Command) cmd;
 }
@@ -237,9 +270,14 @@ int check_command_success(Command player_action) {
 
 void set_difficulty() { 
 
-    if (score > 0 && score % 5 == 0 && time_limit_ms > 1000) {      
+    if (score > 0 && score % 5 == 0) {
 
-        time_limit_ms -= 200;       // Decrease time limit by 200ms every 5 levels, down to a minimum of 1 second - starts at 3 seconds
+        time_limit_ms -= 200;
+
+        if (time_limit_ms < 1000) {
+
+            time_limit_ms = 1000;
+        }
     }
 }
 
@@ -263,18 +301,18 @@ Command detect_player_action() {
     return CMD_NONE;
 }
 
-/* ========== Game State ========== */
+int has_player_won() {
 
-void reset_game() {     /* Reset all game state variables */
+    if (score >= MAX_SCORE) {
 
-    score           = 0;
-    current_command = CMD_NONE;
-    time_limit_ms   = 3000;
-    game_active     = 0;
+        return 1;
+    }
 
-    clear_leds();
-    serial_println("Game reset.");
+    return 0;
 }
+
+
+/* ========== Game State ========== */
 
 void start_game() {
 
@@ -284,19 +322,16 @@ void start_game() {
     game_active     = 1;
 
     clear_leds();
-
-    Serial.println("Game started.");
+    update_display();
 }
 
 void end_game()   {
 
-    Serial.print("Game over. Final score: ");
-    Serial.println(score);
-
     play_lose_audio();
     set_led_color(0);
-
     game_active = 0;
+
+    update_display();
 }
 
 
@@ -309,7 +344,6 @@ void game_loop() {
 
     Command player_action;
 
-    /* If no command is active, issue a new one */
     if (!waiting_for_input) {
 
         clear_leds();
@@ -318,9 +352,6 @@ void game_loop() {
         command_start_time = millis();
         waiting_for_input = 1;
 
-        Serial.print("New command: ");
-        Serial.println(command_to_string(current_command));
-
         play_command_audio();
         update_display();
     }
@@ -328,7 +359,6 @@ void game_loop() {
     /* Check for timeout */
     if ((millis() - command_start_time) >= (unsigned long)time_limit_ms) {
 
-        Serial.println("Timeout - player failed.");
         waiting_for_input = 0;
         end_game();
         return;
@@ -339,17 +369,25 @@ void game_loop() {
 
     if (player_action != CMD_NONE) {
 
-        Serial.print("Detected action: ");
-        Serial.println(command_to_string(player_action));
-
         if (check_command_success(player_action)) {
 
             score++;
-            Serial.print("Correct! Score = ");
-            Serial.println(score);
 
             set_led_color(1);
             play_win_audio();
+            update_display();
+
+            if (has_player_won()) {
+
+                waiting_for_input = 0;
+                game_active = 0;
+
+                delay(POST_COMMAND_DELAY_MS);
+                clear_leds();
+
+                update_display();
+                return;
+            }
 
             set_difficulty();
             waiting_for_input = 0;
@@ -359,7 +397,6 @@ void game_loop() {
         } 
         else {
 
-            Serial.println("Wrong action.");
             waiting_for_input = 0;
             end_game();
             return;
@@ -389,10 +426,6 @@ void loop() {
             if (!game_active) {
 
                 start_game();
-            } 
-            else {
-
-                Serial.println("Game already active.");
             }
         }
     }
