@@ -1,0 +1,77 @@
+const int hallPin = 2;
+const int vibPin = A1;
+const int fsrPin = A5;
+const int micPin = A0;
+const int ledPin = 8;
+
+int threshold = 700;
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(hallPin, INPUT);
+  pinMode(ledPin, OUTPUT);
+}
+
+void loop() {
+  // --- Hall sensor ---
+  int hall = digitalRead(hallPin);
+
+  // --- Vibration sensor ---
+  int vib = analogRead(vibPin);
+
+  // --- FSR sensor ---
+  int fsrValue = analogRead(fsrPin);
+
+  // --- Microphone sensor ---
+  int signalMax = 0;
+  int signalMin = 1023;
+  unsigned long start = millis();
+
+  while (millis() - start < 50) {
+    int sample = analogRead(micPin);
+
+    if (sample > signalMax) signalMax = sample;
+    if (sample < signalMin) signalMin = sample;
+  }
+
+  int peakToPeak = signalMax - signalMin;
+
+  // LED for microphone threshold
+  if (peakToPeak > threshold) {
+    digitalWrite(ledPin, HIGH);
+  } else {
+    digitalWrite(ledPin, LOW);
+  }
+
+  // --- Serial output ---
+  Serial.print("Hall: ");
+  Serial.print(hall);
+
+  Serial.print("   Vib: ");
+  Serial.print(vib);
+
+  Serial.print("   FSR: ");
+  Serial.print(fsrValue);
+  Serial.print(" (");
+
+  if (fsrValue < 100) { 
+    Serial.print("No grip");
+  } 
+  else if (fsrValue < 300) {
+    Serial.print("Light grip");
+  } 
+  else if (fsrValue < 500) {
+    Serial.print("Medium grip");
+  } 
+  else {
+    Serial.print("Strong grip");
+  }
+
+  Serial.print(")");
+
+  Serial.print("   Mic p2p: ");
+  Serial.println(peakToPeak);
+
+  delay(50);
+}
