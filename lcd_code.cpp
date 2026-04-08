@@ -7,8 +7,6 @@
 #define TFT_CS    10
 #define TFT_DC     9
 #define TFT_RST    8
-#define BTN_CLIMB  3
-#define BTN_FAIL   A2
 
 Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_RST);
 Adafruit_FT6206  ts  = Adafruit_FT6206();
@@ -85,8 +83,8 @@ bool touchInRegion(int rx, int ry, int rw, int rh) {
   return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
 }
 
-bool btnClimb() { return digitalRead(BTN_CLIMB) == LOW; }
-bool btnFail()  { return digitalRead(BTN_FAIL)  == LOW; }
+bool btnClimb() { return false;}
+bool btnFail()  { return false;}
 
 int ledgeY(int localLvl) {
   return BOTTOM_LEDGE - (localLvl * LEDGE_SPACING);
@@ -456,9 +454,7 @@ void doReset() {
   drawSprite(ledgeY(0), 0);
 }
 
-void setup() {
-  pinMode(BTN_CLIMB, INPUT_PULLUP);
-  pinMode(BTN_FAIL,  INPUT_PULLUP);
+void lcd_setup() {
   Wire.begin();
   Wire.setTimeout(10);
   ts.begin(40);
@@ -475,8 +471,51 @@ void setup() {
   drawSprite(ledgeY(0), 0);
 }
 
-void loop() {
-  if (touchInRegion(190, 2, 46, 20)) { doReset(); return; }
+void lcd_start() {
+  drawBackground();
+  drawUI();
+  drawSprite(ledgeY(0), 0);
+}
+
+void lcd_climb_step() {
+
+  if (currentLevel < TOTAL_LEVELS) {
+
+    int local = currentLevel % LEVELS_PER_BG;
+    int sprY  = ledgeY(local);
+
+    eraseSprite(sprY);
+    drawSprite(sprY, 1);
+    delay(100);
+
+    currentLevel++;
+    local = currentLevel % LEVELS_PER_BG;
+
+    if (local == 0) {
+      bgLevel++;
+      drawBackground();
+    }
+
+    drawSprite(ledgeY(local), 0);
+    drawUI();
+  }
+}
+
+void lcd_fail() {
+  doFall();
+}
+
+void lcd_win() {
+  showWinScreen();
+}
+
+void lcd_reset() {
+  doReset();
+}
+
+//Old Code:
+
+/* if (touchInRegion(190, 2, 46, 20)) { doReset(); return; }
   if (btnFail())  { doFall();  return; }
   if (btnClimb()) {
     if (currentLevel < TOTAL_LEVELS) {
@@ -503,5 +542,5 @@ void loop() {
     }
     while (btnClimb());
     delay(150);
-  }
-}
+  }*/
+ 
