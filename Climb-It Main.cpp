@@ -13,6 +13,15 @@
 
 #include <Arduino.h>
 
+/* ---------- FORWARD DECLARATIONS ---------- */
+
+//Connect to LCD system
+void lcd_setup();
+void lcd_start();
+void lcd_climb_step();
+void lcd_fail();
+void lcd_win();
+void lcd_reset();
 
 /* ---------- Pin Definitions ---------- */
 
@@ -106,7 +115,10 @@ void init_system()   {
     randomSeed(analogRead(A5));   /* simple seed for randomness */
 }
 
-void init_display()  {}
+void init_display()  {
+
+    lcd_setup();
+}
 
 void init_sensors()  {
 
@@ -204,7 +216,9 @@ int read_mic_action()     {
 
 void update_display()      {
 
-    //Display handeled in seperate file
+    if (!game_active) return;
+
+    lcd_climb_step();
 }
 
 void play_command_audio()  {
@@ -321,8 +335,7 @@ void start_game() {
     time_limit_ms   = 3000;
     game_active     = 1;
 
-    clear_leds();
-    update_display();
+    lcd_start();
 }
 
 void end_game()   {
@@ -331,7 +344,7 @@ void end_game()   {
     set_led_color(0);
     game_active = 0;
 
-    update_display();
+    lcd_fail();
 }
 
 
@@ -353,7 +366,6 @@ void game_loop() {
         waiting_for_input = 1;
 
         play_command_audio();
-        update_display();
     }
 
     /* Check for timeout */
@@ -364,42 +376,31 @@ void game_loop() {
         return;
     }
 
-    /* Check player input */
     player_action = detect_player_action();
 
     if (player_action != CMD_NONE) {
 
-        if (check_command_success(player_action)) {
+        if (player_action == current_command) {
 
             score++;
 
-            set_led_color(1);
-            play_win_audio();
-            update_display();
+            update_display();   
 
-            if (has_player_won()) {
+            if (score >= MAX_SCORE) {
 
+                lcd_win();   
                 waiting_for_input = 0;
                 game_active = 0;
-
-                delay(POST_COMMAND_DELAY_MS);
-                clear_leds();
-
-                update_display();
                 return;
             }
 
             set_difficulty();
             waiting_for_input = 0;
-
             delay(POST_COMMAND_DELAY_MS);
-            clear_leds();
         } 
         else {
-
             waiting_for_input = 0;
             end_game();
-            return;
         }
     }
 }
