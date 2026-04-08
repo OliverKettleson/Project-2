@@ -4,7 +4,7 @@
  * Oliver Kettleson-Belinkie
  * 
  * Display funtions not implimented yet
- * Brush is using light sensor and vibration sensor
+ * Brush is using hall sensor and vibration sensor
  * Audio functions not implemented yet
  */
 
@@ -21,17 +21,14 @@ void lcd_start();
 void lcd_climb_step();
 void lcd_fail();
 void lcd_win();
-void lcd_reset();
 
 /* ---------- Pin Definitions ---------- */
 
 /* Inputs */
 #define PIN_FSR         A0   /* grip force */
 #define PIN_MIC         A1   /* mic level */
-#define PIN_BRUSH_PROX  A2   /* proximity count */
 #define PIN_BRUSH_HALL  2    /* hall switch — digital, LOW = magnet present */
 #define PIN_VIBRATION   3    /* vibration sensor — digital, HIGH = vibration */
-#define PIN_START_STOP  4    /* tactile button */
 
 /* Outputs */
 #define PIN_LED_GREEN   5    /* bi-color LED — green anode */
@@ -43,12 +40,10 @@ void lcd_reset();
 
 #define FSR_THRESHOLD       512   /* ADC counts (0-1023), grip trigger level */
 #define MIC_THRESHOLD       600   /* ADC counts (0-1023), shout trigger level */
-#define BRUSH_PROX_THRESHOLD 400  /* ADC counts (0-1023), proximity trigger level */
 
 
 /* ---------- Timing ---------- */
 
-#define BUTTON_DEBOUNCE_MS    50
 #define POST_COMMAND_DELAY_MS 400
 #define MAX_SCORE             99
 
@@ -79,7 +74,6 @@ void init_leds();
 
 int read_grip_strength();
 int read_grip_action();
-int read_brush_proximity();
 int read_vibration();
 int read_brush_action();
 int read_mic_level();
@@ -93,11 +87,8 @@ void set_led_color(int success);
 void clear_leds();
 
 Command pick_next_command();
-int check_command_success(Command player_action);
 void set_difficulty();
 Command detect_player_action();
-
-int has_player_won();
 
 void start_game();
 void end_game();
@@ -124,12 +115,9 @@ void init_sensors()  {
 
     pinMode(PIN_FSR, INPUT);
     pinMode(PIN_MIC, INPUT);
-    pinMode(PIN_BRUSH_PROX, INPUT);
 
     pinMode(PIN_BRUSH_HALL, INPUT_PULLUP);  /* LOW when magnet present */
     pinMode(PIN_VIBRATION, INPUT);
-
-    pinMode(PIN_START_STOP, INPUT_PULLUP);  /* button pressed = LOW */
 }
 
 void init_audio()    {
@@ -166,11 +154,6 @@ int read_grip_action()    {
     return 0; 
 }
 
-int read_brush_proximity() { 
-    
-    return analogRead(PIN_BRUSH_PROX);
-}
-
 int read_brush_hall()     { 
 
     return digitalRead(PIN_BRUSH_HALL);
@@ -183,10 +166,10 @@ int read_vibration()      {
 
 int read_brush_action()   { 
     
-    int prox_value  = read_brush_proximity();
-    int vib_trigger = read_vibration();
+    int hall_trigger = read_brush_hall();
+    int vib_trigger  = read_vibration();
 
-    if ((prox_value >= BRUSH_PROX_THRESHOLD) && (vib_trigger == HIGH)) {
+    if ((hall_trigger == LOW) && (vib_trigger == HIGH)) {
 
         return 1;
     }
@@ -276,12 +259,6 @@ Command pick_next_command() {               /* Randomly select the next command 
     return (Command) cmd;
 }
 
-int check_command_success(Command player_action) {
-
-    int success = (player_action == current_command);
-    return success;
-}
-
 void set_difficulty() { 
 
     if (score > 0 && score % 5 == 0) {
@@ -315,17 +292,6 @@ Command detect_player_action() {
     return CMD_NONE;
 }
 
-int has_player_won() {
-
-    if (score >= MAX_SCORE) {
-
-        return 1;
-    }
-
-    return 0;
-}
-
-
 /* ========== Game State ========== */
 
 void start_game() {
@@ -340,11 +306,13 @@ void start_game() {
 
 void end_game()   {
 
+    game_active = 0;
     play_lose_audio();
     set_led_color(0);
-    game_active = 0;
 
     lcd_fail();
+
+    start_game();
 }
 
 
@@ -390,7 +358,8 @@ void game_loop() {
 
                 lcd_win();   
                 waiting_for_input = 0;
-                game_active = 0;
+
+                start_game();
                 return;
             }
 
@@ -411,27 +380,10 @@ void game_loop() {
 void setup() {
 
     init_system();
+    start_game();
 }
 
 void loop() {
-
-    static int last_button_state = HIGH;
-    int button_state = digitalRead(PIN_START_STOP);
-
-    if ((last_button_state == HIGH) && (button_state == LOW)) {
-
-        delay(BUTTON_DEBOUNCE_MS);
-
-        if (digitalRead(PIN_START_STOP) == LOW) {
-
-            if (!game_active) {
-
-                start_game();
-            }
-        }
-    }
-
-    last_button_state = button_state;
 
     if (game_active) {
         

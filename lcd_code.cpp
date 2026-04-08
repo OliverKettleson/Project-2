@@ -40,8 +40,6 @@ Adafruit_FT6206  ts  = Adafruit_FT6206();
 #define COL_FLOOR_LN  tft.color565(60,  45,  28)
 #define COL_CEIL      tft.color565(50,  50,  60)
 #define COL_CEIL_BEAM tft.color565(70,  70,  85)
-#define COL_LEDGE     tft.color565(160, 155, 148)
-
 int  currentLevel = 0;
 int  bgLevel      = 0;
 
@@ -82,9 +80,6 @@ bool touchInRegion(int rx, int ry, int rw, int rh) {
   if (!readTouch(x, y)) return false;
   return x >= rx && x <= rx + rw && y >= ry && y <= ry + rh;
 }
-
-bool btnClimb() { return false;}
-bool btnFail()  { return false;}
 
 int ledgeY(int localLvl) {
   return BOTTOM_LEDGE - (localLvl * LEDGE_SPACING);
@@ -141,27 +136,6 @@ void drawAllHolds() {
   for (int i = 0; i < DECO_COUNT; i++) {
     drawHold(COL_DECO_L, decoLY[i], holdColor(decoLCol[i]));
     drawHold(COL_DECO_R, decoRY[i], holdColor(decoRCol[i]));
-  }
-}
-
-void drawHoldsInBand(int topY, int botY) {
-  int t = topY - 10;
-  int b = botY + 10;
-  int local = currentLevel % LEVELS_PER_BG;
-  for (int i = max(0, local - 1); i <= min(LEVELS_PER_BG, local + 2); i++) {
-    int hy = climbHoldY(i);
-    int hx = (i % 2 == 0) ? COL_CLIMB_L : COL_CLIMB_R;
-    if (hy >= t && hy <= b)
-      drawHold(hx, hy, holdColor(climbColIdx[i]));
-  }
-  // deco holds — only if within sprite X range
-  for (int i = 0; i < DECO_COUNT; i++) {
-    if (decoLY[i] >= t && decoLY[i] <= b &&
-        COL_DECO_L >= SPR_X - 10 && COL_DECO_L <= SPR_X + SPR_W + 10)
-      drawHold(COL_DECO_L, decoLY[i], holdColor(decoLCol[i]));
-    if (decoRY[i] >= t && decoRY[i] <= b &&
-        COL_DECO_R >= SPR_X - 10 && COL_DECO_R <= SPR_X + SPR_W + 10)
-      drawHold(COL_DECO_R, decoRY[i], holdColor(decoRCol[i]));
   }
 }
 
@@ -509,38 +483,4 @@ void lcd_win() {
   showWinScreen();
 }
 
-void lcd_reset() {
-  doReset();
-}
-
-//Old Code:
-
-/* if (touchInRegion(190, 2, 46, 20)) { doReset(); return; }
-  if (btnFail())  { doFall();  return; }
-  if (btnClimb()) {
-    if (currentLevel < TOTAL_LEVELS) {
-      int local = currentLevel % LEVELS_PER_BG;
-      int sprY  = ledgeY(local);
-      eraseSprite(sprY);
-      drawSprite(sprY, 1);
-      delay(100);
-      currentLevel++;
-      local = currentLevel % LEVELS_PER_BG;
-      if (local == 0) {
-        bgLevel++;
-        Serial.println("drawBackground start");
-        drawBackground();
-        Serial.println("drawBackground done");
-        drawUI();
-        drawSprite(ledgeY(local), 0);
-      } else {
-        eraseSprite(sprY);
-        drawSprite(ledgeY(local), 0);
-        drawUI();
-      }
-      if (currentLevel >= TOTAL_LEVELS) { delay(800); showWinScreen(); }
-    }
-    while (btnClimb());
-    delay(150);
-  }*/
  
