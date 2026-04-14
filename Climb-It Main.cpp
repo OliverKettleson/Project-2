@@ -12,6 +12,8 @@
 /* ---------- Includes ---------- */
 
 #include <Arduino.h>
+#include <SoftwareSerial.h>
+#include <DFRobotDFPlayerMini.h>
 
 /* ---------- FORWARD DECLARATIONS ---------- */
 
@@ -33,7 +35,10 @@ void lcd_win();
 /* Outputs */
 #define PIN_LED_GREEN   5    /* bi-color LED — green anode */
 #define PIN_LED_RED     6    /* bi-color LED — red anode */
-//#define PIN_AUDIO     9
+
+/* DFPlayer Mini UART */
+#define PIN_DF_RX       10   /* Arduino RX <- DFPlayer TX */
+#define PIN_DF_TX       11   /* Arduino TX -> DFPlayer RX */
 
 
 /* ---------- Sensor Thresholds ---------- */
@@ -45,7 +50,36 @@ void lcd_win();
 /* ---------- Timing ---------- */
 
 #define POST_COMMAND_DELAY_MS 400
+#define FAIL_DISPLAY_MS        2000  /* how long to show the fail state      */
+#define SHORT_DEBOUNCE_MS      300
 #define MAX_SCORE             99
+
+
+/* ---------- DFPlayer track numbers ---------- */
+/*
+ * Rename the files on the SD card so the DFPlayer can address them by number.
+ * Put them in a folder called /MP3 on the card root.
+ *
+ *   /MP3/0004.mp3  <- GetReady.mp3
+ *   /MP3/0005.mp3  <- Squeeze.mp3
+ *   /MP3/0006.mp3  <- Brush.mp3
+ *   /MP3/0007.mp3  <- Scream.mp3
+ *   /MP3/0008.mp3  <- GoodJob.mp3
+ *   /MP3/0009.mp3  <- NextLevel.mp3
+ *   /MP3/0010.mp3  <- NiceSend.mp3
+ *   /MP3/0011.mp3  <- YouFell.mp3
+ *
+ * Tracks 0001-0003 are your old files; leave them alone, just don't use them.
+ */
+#define TRACK_GET_READY  4
+#define TRACK_SQUEEZE    5
+#define TRACK_BRUSH      6
+#define TRACK_SCREAM     7
+#define TRACK_GOOD_JOB   8
+#define TRACK_NEXT_LEVEL 9
+#define TRACK_NICE_SEND  10
+#define TRACK_YOU_FELL   11
+
 
 /* ---------- Command Enum ---------- */
 
@@ -65,6 +99,12 @@ static Command      current_command = CMD_NONE;
 static int          time_limit_ms   = 3000;   /* milliseconds */
 static int          game_active     = 0;
 
+static int     waiting_for_input    = 0;
+static unsigned long command_start_time = 0;
+
+SoftwareSerial dfSerial(PIN_DF_RX, PIN_DF_TX);
+DFRobotDFPlayerMini dfPlayer;
+
 /* ---------- Helper Prototypes ---------- */
 void init_system();
 void init_display();
@@ -79,10 +119,14 @@ int read_brush_action();
 int read_mic_level();
 int read_mic_action();
 
+void drain_sensors();
+
 void update_display();
+void play_track(int track);
 void play_command_audio();
 void play_lose_audio();
 void play_win_audio();
+void play_good_job_audio();
 void set_led_color(int success);
 void clear_leds();
 
@@ -122,7 +166,12 @@ void init_sensors()  {
 
 void init_audio()    {
 
-    //To be filled in once mic test is complete
+    dfSerial.begin(9600);
+
+    /* Give the DFPlayer ~2 s to boot, then initialise */
+    delay(2000);
+    dfPlayer.begin(dfSerial);
+    dfPlayer.volume(25);
 }
 
 void init_leds()     {
@@ -194,6 +243,19 @@ int read_mic_action()     {
     return 0;
 }
 
+void drain_sensors() {
+
+    unsigned long drain_start = millis();
+
+    while ((millis() - drain_start) < (unsigned long)SHORT_DEBOUNCE_MS) {
+
+        /* Keep looping while any sensor is still active */
+        if (read_grip_action() || read_brush_action() || read_mic_action()) {
+
+            drain_start = millis();   /* reset window whenever still triggered */
+        }
+    }
+}
 
 /* ========== Output Actions ========== */
 
@@ -204,20 +266,28 @@ void update_display()      {
     lcd_climb_step();
 }
 
+void play_track(int track) {
+
+    dfPlayer.playMp3Folder(track);
+}
+
 void play_command_audio()  {
 
     switch (current_command) {
 
         case CMD_GRIP:
-            // play grip cue
+
+            play_track(TRACK_SQUEEZE);
             break;
 
         case CMD_BRUSH:
-            // play brush cue
+
+            play_track(TRACK_BRUSH);
             break;
 
         case CMD_SHOUT:
-            // play shout cue
+
+            play_track(TRACK_SHOUT);
             break;
 
         default:
@@ -225,9 +295,20 @@ void play_command_audio()  {
     }
 }
 
-void play_lose_audio()     {}
+void play_good_job_audio() {
 
-void play_win_audio()      {}
+    play_track(TRACK_GOOD_JOB);
+}
+
+void play_lose_audio() {
+
+    play_track(TRACK_YOU_FELL);
+}
+
+void play_win_audio() {
+
+    play_track(TRACK_NICE_SEND);
+}
 
 void set_led_color(int success) {
 
@@ -269,6 +350,8 @@ void set_difficulty() {
 
             time_limit_ms = 1000;
         }
+
+        play_track(TRACK_NEXT_LEVEL);
     }
 }
 
@@ -301,6 +384,12 @@ void start_game() {
     time_limit_ms   = 3000;
     game_active     = 1;
 
+    waiting_for_input    = 0;
+    command_start_time   = 0;
+
+    drain_sensors();   /* FIX 2: clear any lingering sensor state */
+
+    play_track(TRACK_GET_READY);
     lcd_start();
 }
 
@@ -309,34 +398,33 @@ void end_game()   {
     game_active = 0;
     play_lose_audio();
     set_led_color(0);
-
     lcd_fail();
 
-    start_game();
+    delay(FAIL_DISPLAY_MS);
+
+    clear_leds();
 }
 
 
 /* ========== Main Game Loop ========== */
 
-void game_loop() {
-
-    static unsigned long command_start_time = 0;
-    static int waiting_for_input = 0;
+vvoid game_loop() {
 
     Command player_action;
 
     if (!waiting_for_input) {
 
         clear_leds();
+        drain_sensors();           
 
-        current_command = pick_next_command();
+        current_command    = pick_next_command();
         command_start_time = millis();
-        waiting_for_input = 1;
+        waiting_for_input  = 1;
 
         play_command_audio();
+        update_display();                
     }
 
-    /* Check for timeout */
     if ((millis() - command_start_time) >= (unsigned long)time_limit_ms) {
 
         waiting_for_input = 0;
@@ -346,31 +434,34 @@ void game_loop() {
 
     player_action = detect_player_action();
 
-    if (player_action != CMD_NONE) {
+    if (player_action == CMD_NONE) return;   /* nothing yet, keep polling */
 
-        if (player_action == current_command) {
+    waiting_for_input = 0;
 
-            score++;
+    if (player_action == current_command) {
 
-            update_display();   
+     
+        score++;
+        set_led_color(1);
+        play_good_job_audio();
+        update_display();
 
-            if (score >= MAX_SCORE) {
+        if (score >= MAX_SCORE) {
 
-                lcd_win();   
-                waiting_for_input = 0;
-
-                start_game();
-                return;
-            }
-
-            set_difficulty();
-            waiting_for_input = 0;
-            delay(POST_COMMAND_DELAY_MS);
-        } 
-        else {
-            waiting_for_input = 0;
-            end_game();
+            play_win_audio();
+            lcd_win();
+            delay(FAIL_DISPLAY_MS);   /* let the win state display */
+            start_game();
+            return;
         }
+
+        set_difficulty();
+        delay(POST_COMMAND_DELAY_MS);
+    }
+    else {
+
+        /* Wrong input */
+        end_game();
     }
 }
 
@@ -388,5 +479,10 @@ void loop() {
     if (game_active) {
         
         game_loop();
+    }
+    else {
+
+        delay(500);
+        start_game();
     }
 }
