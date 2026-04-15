@@ -2,9 +2,18 @@
  * mic_test.cpp
  * Team Lambda, 2026
  *
- * Mic peak-to-peak threshold test.
- * LED green = peak-to-peak >= 400 (shout detected)
- * LED red   = peak-to-peak <  400 (quiet)
+ * Mic peak-to-peak threshold test — no Serial needed.
+ *
+ * On startup: green flashes 3 times to confirm LED wiring is working.
+ *
+ * During loop:
+ *   LED green = peak-to-peak swing >= MIC_THRESHOLD (shout detected)
+ *   LED red   = peak-to-peak swing <  MIC_THRESHOLD (quiet)
+ *
+ * MIC_THRESHOLD is set very low (50) to confirm the mic is producing
+ * any signal at all. If green triggers just from talking or tapping the
+ * mic, the mic is working — raise MIC_THRESHOLD until only a shout
+ * triggers it. Good starting points to try: 50, 100, 200, 400.
  */
 
 #include <Arduino.h>
@@ -14,7 +23,7 @@
 #define PIN_LED_RED     6
 
 #define MIC_SAMPLE_MS   50
-#define MIC_THRESHOLD   400
+#define MIC_THRESHOLD   50    /* start low — raise once green triggers */
 
 int read_mic_peak_to_peak() {
     unsigned long start = millis();
@@ -32,10 +41,22 @@ void setup() {
     pinMode(PIN_MIC,       INPUT);
     pinMode(PIN_LED_GREEN, OUTPUT);
     pinMode(PIN_LED_RED,   OUTPUT);
+
+    /* Startup flash — confirms both LEDs are wired correctly */
+    for (int i = 0; i < 3; i++) {
+        digitalWrite(PIN_LED_GREEN, HIGH);
+        delay(200);
+        digitalWrite(PIN_LED_GREEN, LOW);
+        digitalWrite(PIN_LED_RED,   HIGH);
+        delay(200);
+        digitalWrite(PIN_LED_RED,   LOW);
+        delay(100);
+    }
 }
 
 void loop() {
     int swing = read_mic_peak_to_peak();
+
     if (swing >= MIC_THRESHOLD) {
         digitalWrite(PIN_LED_GREEN, HIGH);
         digitalWrite(PIN_LED_RED,   LOW);
