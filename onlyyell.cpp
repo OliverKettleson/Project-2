@@ -8,6 +8,9 @@
  *
  * This build implements ONLY the shout/scream command.
  * Grip (FSR) and brush (Hall + vibration) are excluded.
+ *
+ * Audio is fully stubbed — command shown on screen only.
+ * Restore audio function bodies once DFPlayer is working.
  */
 
 
@@ -25,46 +28,31 @@
 
 /* ---------- Pin Definitions ---------- */
 
-#define PIN_MIC         A0   /* mic level                           */
+#define PIN_MIC         A0
 
-/* DFPlayer Mini UART + busy */
-#define PIN_DF_TX       4    /* Arduino TX → DFPlayer RX            */
-#define PIN_DF_RX       5    /* Arduino RX ← DFPlayer TX            */
-#define PIN_DF_BUSY     3    /* LOW while DFPlayer is playing        */
+#define PIN_DF_TX       4
+#define PIN_DF_RX       5
+#define PIN_DF_BUSY     3
 
-/* Bi-color LED */
 #define PIN_LED_GREEN   7
 #define PIN_LED_RED     6
 
-/* TFT display (SPI) */
-#define TFT_RST         9
-#define TFT_DC          10
-#define TFT_CS          11
+#define TFT_RST         8
+#define TFT_DC          9
+#define TFT_CS          10
 
 
 /* ---------- Sensor Thresholds ---------- */
 
-#define MIC_THRESHOLD       600   /* ADC counts (0-1023) */
+#define MIC_THRESHOLD       600
 
 
 /* ---------- Timing ---------- */
 
 #define POST_COMMAND_DELAY_MS    400
 #define SHORT_DEBOUNCE_MS        300
-#define BUSY_POLL_INTERVAL_MS     20
-#define BUSY_TIMEOUT_MS         8000
 #define MAX_SCORE                 99
-#define DRAIN_HARD_TIMEOUT_MS   2000   /* safety ceiling on drain_sensors() */
-
-
-/* ---------- DFPlayer Track Numbers ---------- */
-
-#define TRACK_GET_READY  4
-#define TRACK_SCREAM     7
-#define TRACK_GOOD_JOB   8
-#define TRACK_NEXT_LEVEL 9
-#define TRACK_NICE_SEND  10
-#define TRACK_YOU_FELL   11
+#define DRAIN_HARD_TIMEOUT_MS   2000
 
 
 /* ---------- Display Constants ---------- */
@@ -98,6 +86,10 @@
 #define COL_FLOOR_LN  tft.color565(60,  45,  28)
 #define COL_CEIL      tft.color565(50,  50,  60)
 #define COL_CEIL_BEAM tft.color565(70,  70,  85)
+
+/* Command banner — sits in wall area just below the UI bar */
+#define CMD_BANNER_Y  27
+#define CMD_BANNER_H  20
 
 
 /* ---------- Game State ---------- */
@@ -145,8 +137,6 @@ int  read_mic_level();
 int  read_mic_action();
 void drain_sensors();
 
-void wait_for_dfplayer();
-void play_track(int track);
 void play_command_audio();
 void play_good_job_audio();
 void play_lose_audio();
@@ -185,6 +175,8 @@ void     drawCeiling();
 void     drawBackground();
 void     drawResetButton();
 void     drawUI();
+void     drawCommandPrompt();
+void     clearCommandPrompt();
 void     repairWall(int top, int bot);
 void     eraseSprite(int ly);
 void     drawSprite(int ly, int pose);
@@ -207,20 +199,13 @@ void init_system() {
     randomSeed(analogRead(A5));
 }
 
-void init_display() {
-    lcd_setup();
-}
+void init_display() { lcd_setup(); }
 
-void init_sensors() {
-    pinMode(PIN_MIC, INPUT);
-}
+void init_sensors() { pinMode(PIN_MIC, INPUT); }
 
 void init_audio() {
+    /* Pin reserved for when DFPlayer is restored. No blocking waits. */
     pinMode(PIN_DF_BUSY, INPUT);
-    dfSerial.begin(9600);
-    delay(2000);
-    dfPlayer.begin(dfSerial);
-    dfPlayer.volume(25);
 }
 
 void init_leds() {
@@ -238,13 +223,6 @@ void init_leds() {
 int read_mic_level()  { return analogRead(PIN_MIC); }
 int read_mic_action() { return (read_mic_level() >= MIC_THRESHOLD) ? 1 : 0; }
 
-/*
- * drain_sensors()
- *
- * Waits until the mic has been quiet for SHORT_DEBOUNCE_MS.
- * DRAIN_HARD_TIMEOUT_MS caps the total wait so a continuously
- * loud environment can't lock up the game indefinitely.
- */
 void drain_sensors() {
     unsigned long drain_start   = millis();
     unsigned long overall_start = millis();
@@ -256,28 +234,14 @@ void drain_sensors() {
 
 
 /* =====================================================================
- * AUDIO  —  busy-pin gated
+ * AUDIO STUBS
+ * Bodies are empty. Restore when DFPlayer is working.
  * ===================================================================== */
 
-void wait_for_dfplayer() {
-    delay(50);
-    unsigned long start = millis();
-    while (digitalRead(PIN_DF_BUSY) == LOW) {
-        if ((millis() - start) >= (unsigned long)BUSY_TIMEOUT_MS) break;
-        delay(BUSY_POLL_INTERVAL_MS);
-    }
-}
-
-void play_track(int track) {
-    if (digitalRead(PIN_DF_BUSY) == LOW) return;
-    dfPlayer.playMp3Folder(track);
-}
-
-/* Only one command now — always play the scream prompt */
-void play_command_audio() { play_track(TRACK_SCREAM); }
-void play_good_job_audio() { play_track(TRACK_GOOD_JOB); }
-void play_lose_audio()     { play_track(TRACK_YOU_FELL); }
-void play_win_audio()      { play_track(TRACK_NICE_SEND); }
+void play_command_audio()  { /* stub */ }
+void play_good_job_audio() { /* stub */ }
+void play_lose_audio()     { /* stub */ }
+void play_win_audio()      { /* stub */ }
 
 
 /* =====================================================================
@@ -296,6 +260,40 @@ void clear_leds() {
 
 
 /* =====================================================================
+ * COMMAND PROMPT
+ * ===================================================================== */
+
+/*
+ * drawCommandPrompt()
+ * Paints an orange "SCREAM!" banner just below the UI bar.
+ * This is the sole player cue while audio is stubbed.
+ */
+void drawCommandPrompt() {
+    tft.fillRect(WALL_X, CMD_BANNER_Y, WALL_W, CMD_BANNER_H,
+                 tft.color565(200, 80, 0));
+    tft.setTextSize(2);
+    tft.setTextColor(ILI9341_WHITE);
+    tft.setCursor(62, CMD_BANNER_Y + 2);
+    tft.print("SCREAM!");
+}
+
+/*
+ * clearCommandPrompt()
+ * Restores the banner strip to plain wall texture.
+ * Called on a correct action and on timeout.
+ */
+void clearCommandPrompt() {
+    tft.fillRect(WALL_X, CMD_BANNER_Y, WALL_W, CMD_BANNER_H, COL_WALL);
+    for (int py = 0; py < SCREEN_H; py += 32) {
+        if (py >= CMD_BANNER_Y && py <= CMD_BANNER_Y + CMD_BANNER_H) {
+            tft.drawFastHLine(WALL_X, py,     WALL_W, COL_WALL_DARK);
+            tft.drawFastHLine(WALL_X, py + 1, WALL_W, COL_WALL_LITE);
+        }
+    }
+}
+
+
+/* =====================================================================
  * GAME LOGIC
  * ===================================================================== */
 
@@ -308,38 +306,30 @@ void set_difficulty() {
     if (score > 0 && score % 5 == 0) {
         time_limit_ms -= 200;
         if (time_limit_ms < 1000) time_limit_ms = 1000;
-        wait_for_dfplayer();
-        play_track(TRACK_NEXT_LEVEL);
+        /* Restore: play_track(TRACK_NEXT_LEVEL) when audio works */
     }
 }
 
-/*
- * detect_player_action()
- * Returns 1 if the player shouted, 0 otherwise.
- */
-int detect_player_action() {
-    return read_mic_action();
-}
+int detect_player_action() { return read_mic_action(); }
 
 void start_game() {
-    score             = 0;
-    time_limit_ms     = 3000;
-    game_active       = 1;
-    waiting_for_input = 0;
+    score              = 0;
+    time_limit_ms      = 3000;
+    game_active        = 1;
+    waiting_for_input  = 0;
     command_start_time = 0;
-    currentLevel      = 0;
-    bgLevel           = 0;
+    currentLevel       = 0;
+    bgLevel            = 0;
 
     drain_sensors();
-
-    play_track(TRACK_GET_READY);
-    wait_for_dfplayer();
-
+    /* Removed: play_track(TRACK_GET_READY) + wait_for_dfplayer()
+       Both blocked indefinitely with a dead DFPlayer.            */
     lcd_start();
 }
 
 void end_game() {
     game_active = 0;
+    clearCommandPrompt();
     play_lose_audio();
     set_led_color(0);
     lcd_fail();
@@ -355,9 +345,7 @@ void game_loop() {
         waiting_for_input  = 1;
 
         play_command_audio();
-        /* NOTE: no update_display() here — the display updates only on
-           a successful action, so the prompt doesn't prematurely advance
-           the climber before the player responds.                        */
+        drawCommandPrompt();   /* show SCREAM! banner — primary cue */
     }
 
     /* Timed out */
@@ -367,7 +355,7 @@ void game_loop() {
         return;
     }
 
-    if (!detect_player_action()) return;   /* nothing yet */
+    if (!detect_player_action()) return;   /* nothing yet — keep polling */
 
     waiting_for_input = 0;
 
@@ -375,10 +363,10 @@ void game_loop() {
     score++;
     set_led_color(1);
     play_good_job_audio();
+    clearCommandPrompt();
     update_display();
 
     if (score >= MAX_SCORE) {
-        wait_for_dfplayer();
         play_win_audio();
         lcd_win();
         return;
@@ -656,7 +644,6 @@ void showStartScreen() {
         int snH = max(0, 10 - abs(x - 120) / 2);
         tft.drawFastVLine(x, h, snH, ILI9341_WHITE);
     }
-    /* Climber sprite on start screen */
     tft.fillRect(CX - 10, 236,  9, 5, tft.color565(30,  20,  10));
     tft.fillRect(CX +  2, 236,  9, 5, tft.color565(30,  20,  10));
     tft.fillRect(CX -  8, 223,  6, 13, tft.color565(50,  50, 140));
@@ -755,16 +742,18 @@ void doReset() {
  * ===================================================================== */
 
 void lcd_setup() {
-    Wire.begin();
-    Wire.setTimeout(10);
-    ts.begin(40);
-    tft.begin(8000000);
+    /* TFT must initialise before I2C/touch */
+    tft.begin();
+    delay(200);
     tft.setRotation(0);
-    tft.fillScreen(ILI9341_BLACK);
-    delay(100);
     tft.fillScreen(ILI9341_BLACK);
     tft.setTextWrap(false);
     tft.cp437(true);
+
+    Wire.begin();
+    Wire.setTimeout(10);
+    ts.begin(40);
+
     showStartScreen();
     drawBackground();
     drawUI();
