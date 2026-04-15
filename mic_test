@@ -1,0 +1,46 @@
+/*
+ * mic_test.cpp
+ * Team Lambda, 2026
+ *
+ * Mic peak-to-peak threshold test.
+ * LED green = peak-to-peak >= 400 (shout detected)
+ * LED red   = peak-to-peak <  400 (quiet)
+ */
+
+#include <Arduino.h>
+
+#define PIN_MIC         A0
+#define PIN_LED_GREEN   7
+#define PIN_LED_RED     6
+
+#define MIC_SAMPLE_MS   50
+#define MIC_THRESHOLD   400
+
+int read_mic_peak_to_peak() {
+    unsigned long start = millis();
+    int vmax = 0;
+    int vmin = 1023;
+    while ((millis() - start) < (unsigned long)MIC_SAMPLE_MS) {
+        int v = analogRead(PIN_MIC);
+        if (v > vmax) vmax = v;
+        if (v < vmin) vmin = v;
+    }
+    return vmax - vmin;
+}
+
+void setup() {
+    pinMode(PIN_MIC,       INPUT);
+    pinMode(PIN_LED_GREEN, OUTPUT);
+    pinMode(PIN_LED_RED,   OUTPUT);
+}
+
+void loop() {
+    int swing = read_mic_peak_to_peak();
+    if (swing >= MIC_THRESHOLD) {
+        digitalWrite(PIN_LED_GREEN, HIGH);
+        digitalWrite(PIN_LED_RED,   LOW);
+    } else {
+        digitalWrite(PIN_LED_GREEN, LOW);
+        digitalWrite(PIN_LED_RED,   HIGH);
+    }
+}
