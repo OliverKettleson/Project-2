@@ -44,7 +44,14 @@
 
 /* ---------- Sensor Thresholds ---------- */
 
-#define MIC_THRESHOLD       600
+/*
+ * MIC_SAMPLE_MS   — how long (ms) to collect samples for one peak-to-peak read.
+ *                   50 ms captures several cycles of a shout without feeling laggy.
+ * MIC_THRESHOLD   — minimum peak-to-peak ADC swing (0-1023) to count as a shout.
+ *                   Start around 400 and tune up/down based on your mic and room.
+ */
+#define MIC_SAMPLE_MS    50
+#define MIC_THRESHOLD   400
 
 
 /* ---------- Timing ---------- */
@@ -66,8 +73,19 @@
 #define CX            120
 #define LEDGE_SPACING 28
 #define BOTTOM_LEDGE  300
+
+/*
+ * SPR_X, SPR_W, SPR_H — sprite bounding box origin and size.
+ *
+ * FIX: The original SPR_Y_OFF (55) only covered the body. The reaching-arm
+ * pose extends a further HAND_Y_OFF (46) pixels above the feet, so the full
+ * sprite height from feet to fingertip is 4 (shoe below feet) + 46 = 50 px
+ * above ly. We set SPR_Y_OFF to 58 to fully cover the tallest pixel drawn
+ * (helm top at ly-51, plus a 7-pixel margin) so eraseSprite() wipes the
+ * entire previous frame including the extended arm, preventing ghost images.
+ */
 #define SPR_X         (CX - 30)
-#define SPR_Y_OFF     55
+#define SPR_Y_OFF     58        /* was 55 — now covers helm+arm fully */
 #define SPR_W         60
 #define SPR_H         58
 
@@ -133,7 +151,7 @@ void init_sensors();
 void init_audio();
 void init_leds();
 
-int  read_mic_level();
+int  read_mic_peak_to_peak();
 int  read_mic_action();
 void drain_sensors();
 
@@ -220,9 +238,47 @@ void init_leds() {
  * SENSORS
  * ===================================================================== */
 
-int read_mic_level()  { return analogRead(PIN_MIC); }
-int read_mic_action() { return (read_mic_level() >= MIC_THRESHOLD) ? 1 : 0; }
+/*
+ * read_mic_peak_to_peak()
+ *
+ * Samples the microphone for MIC_SAMPLE_MS milliseconds and returns
+ * the difference between the highest and lowest ADC readings seen in
+ * that window (0-1023). A quiet room gives a small swing; a shout
+ * produces a large one. This is far more reliable than a single
+ * instantaneous threshold check, which fires on any random spike.
+ */
+int read_mic_peak_to_peak() {
+    unsigned long start = millis();
+    int vmax = 0;
+    int vmin = 1023;
+    while ((millis() - start) < (unsigned long)MIC_SAMPLE_MS) {
+        int v = analogRead(PIN_MIC);
+        if (v > vmax) vmax = v;
+        if (v < vmin) vmin = v;
+    }
+    return vmax - vmin;
+}
 
+/*
+ * read_mic_action()
+ *
+ * Returns 1 if the peak-to-peak swing in the last MIC_SAMPLE_MS window
+ * exceeds MIC_THRESHOLD, 0 otherwise.
+ */
+int read_mic_action() {
+    return (read_mic_peak_to_peak() >= MIC_THRESHOLD) ? 1 : 0;
+}
+
+/*
+ * drain_sensors()
+ *
+ * Keeps sampling until the mic has been below threshold for
+ * SHORT_DEBOUNCE_MS. DRAIN_HARD_TIMEOUT_MS caps the total wait so a
+ * continuously loud environment can't lock up the game indefinitely.
+ *
+ * Note: each call to read_mic_action() already takes MIC_SAMPLE_MS,
+ * so the effective poll rate here is one window per MIC_SAMPLE_MS.
+ */
 void drain_sensors() {
     unsigned long drain_start   = millis();
     unsigned long overall_start = millis();
@@ -263,11 +319,6 @@ void clear_leds() {
  * COMMAND PROMPT
  * ===================================================================== */
 
-/*
- * drawCommandPrompt()
- * Paints an orange "SCREAM!" banner just below the UI bar.
- * This is the sole player cue while audio is stubbed.
- */
 void drawCommandPrompt() {
     tft.fillRect(WALL_X, CMD_BANNER_Y, WALL_W, CMD_BANNER_H,
                  tft.color565(200, 80, 0));
@@ -277,11 +328,6 @@ void drawCommandPrompt() {
     tft.print("SCREAM!");
 }
 
-/*
- * clearCommandPrompt()
- * Restores the banner strip to plain wall texture.
- * Called on a correct action and on timeout.
- */
 void clearCommandPrompt() {
     tft.fillRect(WALL_X, CMD_BANNER_Y, WALL_W, CMD_BANNER_H, COL_WALL);
     for (int py = 0; py < SCREEN_H; py += 32) {
@@ -306,7 +352,6 @@ void set_difficulty() {
     if (score > 0 && score % 5 == 0) {
         time_limit_ms -= 200;
         if (time_limit_ms < 1000) time_limit_ms = 1000;
-        /* Restore: play_track(TRACK_NEXT_LEVEL) when audio works */
     }
 }
 
@@ -322,8 +367,6 @@ void start_game() {
     bgLevel            = 0;
 
     drain_sensors();
-    /* Removed: play_track(TRACK_GET_READY) + wait_for_dfplayer()
-       Both blocked indefinitely with a dead DFPlayer.            */
     lcd_start();
 }
 
@@ -345,7 +388,7 @@ void game_loop() {
         waiting_for_input  = 1;
 
         play_command_audio();
-        drawCommandPrompt();   /* show SCREAM! banner — primary cue */
+        drawCommandPrompt();
     }
 
     /* Timed out */
@@ -355,11 +398,10 @@ void game_loop() {
         return;
     }
 
-    if (!detect_player_action()) return;   /* nothing yet — keep polling */
+    if (!detect_player_action()) return;
 
     waiting_for_input = 0;
 
-    /* Correct — shout detected */
     score++;
     set_led_color(1);
     play_good_job_audio();
@@ -542,24 +584,49 @@ void drawUI() {
     drawResetButton();
 }
 
+/*
+ * repairWall()
+ *
+ * Repaints a vertical strip of wall texture between rows top..bot,
+ * but only within the sprite's horizontal footprint (SPR_X..SPR_X+SPR_W).
+ *
+ * FIX: The erase region is also widened to include COL_CLIMB_L and
+ * COL_CLIMB_R (the hold columns) so the reaching-arm endpoint — a
+ * fillCircle drawn at the hold position — is also fully erased.
+ */
 void repairWall(int top, int bot) {
-    tft.fillRect(SPR_X, top, SPR_W, bot - top, COL_WALL);
+    /* Widen erase rect to cover the hold columns the arm reaches to */
+    int eraseX = min(SPR_X, min(COL_CLIMB_L - 8, COL_DECO_L - 8));
+    int eraseR = max(SPR_X + SPR_W, max(COL_CLIMB_R + 8, COL_DECO_R + 8));
+    int eraseW = eraseR - eraseX;
+
+    tft.fillRect(eraseX, top, eraseW, bot - top, COL_WALL);
+
     for (int px = WALL_X; px < WALL_X + WALL_W; px += 40) {
-        if (px >= SPR_X && px <= SPR_X + SPR_W) {
+        if (px >= eraseX && px <= eraseR) {
             tft.drawFastVLine(px,     top, bot - top, COL_WALL_DARK);
             tft.drawFastVLine(px + 1, top, bot - top, COL_WALL_LITE);
         }
     }
     for (int py = 0; py < SCREEN_H; py += 32) {
         if (py >= top && py <= bot) {
-            tft.drawFastHLine(SPR_X, py,     SPR_W, COL_WALL_DARK);
-            tft.drawFastHLine(SPR_X, py + 1, SPR_W, COL_WALL_LITE);
+            tft.drawFastHLine(eraseX, py,     eraseW, COL_WALL_DARK);
+            tft.drawFastHLine(eraseX, py + 1, eraseW, COL_WALL_LITE);
         }
     }
 }
 
+/*
+ * eraseSprite()
+ *
+ * FIX: top is now clamped using SPR_Y_OFF (58) which covers the full
+ * sprite height including the reaching arm (previously 55, which left
+ * the top of the arm uncleared and caused ghost duplicates).
+ * After clearing, nearby holds are redrawn so the erase doesn't
+ * accidentally blank them.
+ */
 void eraseSprite(int ly) {
-    int top = max(25, ly - SPR_Y_OFF);
+    int top = max(25, ly - SPR_Y_OFF);   /* SPR_Y_OFF=58 covers helm+arm */
     int bot = min(SCREEN_H, ly + 5);
     repairWall(top, bot);
     if (currentLevel < LEVELS_PER_BG && bot >= 285) drawFloor();
