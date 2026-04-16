@@ -595,23 +595,17 @@ void drawUI() {
  * fillCircle drawn at the hold position — is also fully erased.
  */
 void repairWall(int top, int bot) {
-    /* Widen erase rect to cover the hold columns the arm reaches to */
-    int eraseX = min(SPR_X, min(COL_CLIMB_L - 8, COL_DECO_L - 8));
-    int eraseR = max(SPR_X + SPR_W, max(COL_CLIMB_R + 8, COL_DECO_R + 8));
-    int eraseW = eraseR - eraseX;
-
-    tft.fillRect(eraseX, top, eraseW, bot - top, COL_WALL);
-
+    tft.fillRect(SPR_X, top, SPR_W, bot - top, COL_WALL);
     for (int px = WALL_X; px < WALL_X + WALL_W; px += 40) {
-        if (px >= eraseX && px <= eraseR) {
+        if (px >= SPR_X && px <= SPR_X + SPR_W) {
             tft.drawFastVLine(px,     top, bot - top, COL_WALL_DARK);
             tft.drawFastVLine(px + 1, top, bot - top, COL_WALL_LITE);
         }
     }
     for (int py = 0; py < SCREEN_H; py += 32) {
         if (py >= top && py <= bot) {
-            tft.drawFastHLine(eraseX, py,     eraseW, COL_WALL_DARK);
-            tft.drawFastHLine(eraseX, py + 1, eraseW, COL_WALL_LITE);
+            tft.drawFastHLine(SPR_X, py,     SPR_W, COL_WALL_DARK);
+            tft.drawFastHLine(SPR_X, py + 1, SPR_W, COL_WALL_LITE);
         }
     }
 }
@@ -839,7 +833,7 @@ void lcd_climb_step() {
         int sprY  = ledgeY(local);
 
         eraseSprite(sprY);
-        drawSprite(sprY, 1);
+        drawSprite(sprY, 1);       /* show reaching pose briefly */
         delay(100);
 
         currentLevel++;
@@ -847,11 +841,14 @@ void lcd_climb_step() {
 
         if (local == 0) {
             bgLevel++;
-            drawBackground();
+            drawBackground();      /* full redraw on bg change clears everything */
+            drawUI();
+            drawSprite(ledgeY(local), 0);
+        } else {
+            eraseSprite(sprY);     /* second erase clears the reaching arm */
+            drawSprite(ledgeY(local), 0);
+            drawUI();
         }
-
-        drawSprite(ledgeY(local), 0);
-        drawUI();
     }
 }
 
