@@ -415,9 +415,13 @@ void game_loop() {
     }
 
     set_difficulty();
-    delay(POST_COMMAND_DELAY_MS);
-}
 
+    /* Wait out the remainder of the time window before the next command */
+    unsigned long elapsed = millis() - command_start_time;
+    if (elapsed < (unsigned long)time_limit_ms) {
+        delay(time_limit_ms - elapsed);
+    }
+}
 
 /* =====================================================================
  * DISPLAY HELPERS
